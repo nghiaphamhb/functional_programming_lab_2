@@ -1,40 +1,68 @@
-name: OCaml CI
+name: OCaml CI - OA Set
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, "feature/**" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout code
+      # 1) Lấy code về
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Cài OCaml + Opam
-      - name: Set up OCaml
+      # 2) Setup OCaml + dune
+      - name: Setup OCaml environment
         uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: 4.14.1
-          opam-depext: true
-          opam-depext-flags: "-y"
+          ocaml-compiler: '4.14.0'
           dune-cache: true
 
-      # 3) Cài dependencies từ dune-project / opam
-      - name: Install dependencies
+      # 3) Cài công cụ & thư viện cần cho bài này
+      # (dune để build, alcotest + qcheck để test, ocamlformat optional nếu muốn check format)
+      - name: Install OCaml tools and libraries
         run: |
-          opam install . --deps-only -y
+          opam update
+          opam install -y dune alcotest qcheck ocamlformat.0.27.0
 
-      # 4) Build
-      - name: Build
+      # 4) Build (lint cơ bản qua cảnh báo compiler)
+      # Làm trong thư mục dự án OA Set
+      - name: Build (dev profile)
+        working-directory: oa_set
         run: |
-          opam exec -- dune build
+          eval $(opam env)
+          echo "Building project..."
+          dune build --profile dev
 
-      # 5) Chạy test (Alcotest + QCheck)
+      # 5) (Optional) Kiểm tra format OCaml
+      - name: Format check
+        working-directory: oa_set
+        run: |
+          eval $(opam env)
+          echo "Checking code formatting..."
+          ocamlformat --version
+          files="$(git ls-files -- '*.ml' '*.mli')"
+          if [ -z "$files" ]; then
+            echo "No OCaml files to format."
+            exit 0
+          fi
+          failed=0
+          for f in $files; do
+            if ! ocamlformat --check "$f"; then
+              echo "Not formatted: $f"
+              failed=1
+            fi
+          done
+          exit $failed
+
+      # 6) Chạy test (Alcotest + QCheck)
       - name: Run tests
+        working-directory: oa_set
         run: |
-          opam exec -- dune test
+          eval $(opam env)
+          echo "Running tests..."
+          dune runtest
