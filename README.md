@@ -73,59 +73,70 @@ end
 module Make (H : HASHABLE) : SET with type elt = H.t
 ```
 
-### Основные запросы (is_empty / cardinal / mem)
-```ocaml
-(* Empty set is represented by the empty list *)
-let empty : t = []
-let is_empty (s : t) : bool = s = []
-let cardinal (s : t) : int = List.length s
-
-(* Membership test using H.equal *)
-let mem (x : elt) (s : t) : bool = List.exists (fun y -> H.equal x y) s
-```
-
 ### Добавление и удаление (add / remove, иммутабельность)
 ```ocaml
-(* Pure add:
-  - if element already present, return the same set
-  - otherwise, cons it to the front *)
-let add (x : elt) (s : t) : t = if mem x s then s else x :: s
+let rec add x s =
+    if mem x s then s
+    else
+      let s = ensure_room s in
+      let tbl' = Array.copy s.tbl in
+      match find_slot tbl' x with
+      | `Insert idx ->
+          let used' =
+            match tbl'.(idx) with
+            | Empty -> s.used + 1
+            | Tombstone -> s.used
+            | Occupied _ -> s.used
+          in
+          tbl'.(idx) <- Occupied x;
+          { tbl = tbl'; size = s.size + 1; used = used' }
+      | `Found _ -> s
+      | `Full ->
+          add x (rehash (capacity s lsl 1) s)
 
-(* Pure remove:
-  - filter out all elements equal to x *)
-let remove (x : elt) (s : t) : t = List.filter (fun y -> not (H.equal x y)) s
+let remove x s =
+    match find_slot s.tbl x with
+    | `Found idx ->
+        let tbl' = Array.copy s.tbl in
+        tbl'.(idx) <- Tombstone;
+        let s' = { tbl = tbl'; size = s.size - 1; used = s.used } in
+        if
+          capacity s' > initial_capacity
+          && float_of_int s'.size /. float_of_int (capacity s') < 0.2
+        then rehash (capacity s' lsr 1) s'
+        else s'
+    | _ -> s
 ```
 
 ### Свертки (левая и правая):
 
 ```ocaml
-(* Left fold over the underlying list *)
-let fold_left (f : 'a -> elt -> 'a) (acc : 'a) (s : t) : 'a =
-  List.fold_left f acc s
+let fold_left f acc s =
+    let r = ref acc in
+    iter (fun x -> r := f !r x) s;
+    !r
 
-(* Right fold over the underlying list *)
-let fold_right (f : elt -> 'a -> 'a) (s : t) (acc : 'a) : 'a =
-  List.fold_right f s acc
+let fold_right f s acc =
+    let r = ref acc in
+    for i = Array.length s.tbl - 1 downto 0 do
+      match s.tbl.(i) with Occupied x -> r := f x !r | _ -> ()
+    done;
+    !r
 ```
 
 ### Фильтрация:
 
 ```ocaml
-(* Filter with rebuilding via add:
-  - we rebuild the set from scratch to keep invariants explicit
-  - even if the original set has no duplicates, this keeps the style uniform *)
-let filter (p : elt -> bool) (s : t) : t =
-  fold_left (fun acc x -> if p x then add x acc else acc) empty s
+let filter p s =
+    fold_left (fun acc x -> if p x then add x acc else acc) empty s
 ```
 
 ### Отображение (`map`):
 
 ```ocaml
-(* Map may create duplicates, so we must re-add through add:
-  - apply g to each element
-  - insert into a new set with add to enforce uniqueness *)
-let map (g : elt -> elt) (s : t) : t =
-  fold_left (fun acc x -> add (g x) acc) empty s
+let map g s =
+    fold_left (fun acc x -> add (g x) acc) empty s
+
 ```
 
 
@@ -133,23 +144,22 @@ let map (g : elt -> elt) (s : t) : t =
 ### Соответствие свойству моноида
 
 ```ocaml
-(* Union of two sets:
-  - fold over the second set, inserting into the first via add
-  - add already handles duplicates *)
-let union (a : t) (b : t) : t = fold_left (fun acc x -> add x acc) a b
+let union a b =
+    let a, b = if a.size >= b.size then (a, b) else (b, a) in
+    fold_left (fun acc x -> add x acc) a b
 
-(* subset a b: every element of a is in b *)
-let subset (a : t) (b : t) : bool = List.for_all (fun x -> mem x b) a
+let subset a b = fold_left (fun ok x -> ok && mem x b) true a
 ```
 
 ### Сравнение множеств
 
 ```ocaml
-(* equal_set a b:
-  - same cardinality
-  - each is subset of the other
-  - since add/remove preserve uniqueness, this is a valid equality check *)
-let equal_set (a : t) (b : t) : bool = cardinal a = cardinal b && subset a b
+let equal_set a b =
+    if a.size <> b.size then false
+    else
+      let small, big = if a.size <= b.size then (a, b) else (b, a) in
+      fold_left (fun ok x -> ok && mem x big) true small
+
 ```
 
 ## Тестирование
@@ -215,6 +225,13 @@ Running tests...
   Test Successful in 0.003s. 5 tests run.
 ```
 
+### Метрики
+| Метрика                               | Значение | Пояснение                                 |
+| ------------------------------------- | -------- | ----------------------------------------- |
+| Количество unit-тестов                | 2        | базовые операции                          |
+| Количество property-тестов            | 3        | свойства моноида                          |
+| Количество проверок (итераций QCheck) | 900      | 3 теста × 300 генераций                   |
+| Общее покрытие API                    | ~95%     | проверены все основные операции множества |
 
 ## Выводы
 
