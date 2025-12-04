@@ -1,44 +1,73 @@
-module type HASHABLE = sig
-  type t
+(** интейфейс *)
 
-  val hash : t -> int (* hash function *)
-  val equal : t -> t -> bool (* equality function *)
-end
+(* тип данных элемента в Open Addressing Set *)
+type 'a open_addressing_set =
+  | Empty (* свободный *)
+  | Occupied of 'a (* занятый *)
+  | Deleted
+(* удаленый *)
 
-module type SET = sig
-  type elt (* eg: int *)
-  type t (* eg: int string *)
+(* основные функции Set *)
 
-  val empty : t (* create empty set *)
-  (** constructors and queries *)
+val create_set : int -> 'a open_addressing_set list
+(** [create_set size] создать пустой Set с определенным размером. *)
 
-  val is_empty : t -> bool (* is set empty? *)
-  val cardinal : t -> int (* number of elements*)
-  val mem : elt -> t -> bool (* is element in set? *)
+val insert : 'a open_addressing_set list -> 'a -> 'a open_addressing_set list
+(** [insert set x] добавить элемент [x] в набор [set]. Если элемент уже
+    существует, не добавляйте его снова. *)
 
-  val add : elt -> t -> t
-  (** basic edits*)
+val remove : 'a open_addressing_set list -> 'a -> 'a open_addressing_set list
+(** [remove set x] удалить элемент [x] из набора [set]. *)
 
-  val remove : elt -> t -> t
+val contains : 'a open_addressing_set list -> 'a -> bool
+(** [contains set x] проверить, находится ли элемент [x] в наборе [set]. *)
 
-  val iter : (elt -> unit) -> t -> unit (* iter f s *)
-  (** high-order operators*)
+val hash_fn : 'a -> int -> int
+(** [hash_fn x size] вычислить хэш-индекс элемента [x] в наборе с размером
+    [size]. *)
 
-  val fold_left : ('a -> elt -> 'a) -> 'a -> t -> 'a (* fold_left f acc s *)
-  val fold_right : (elt -> 'a -> 'a) -> t -> 'a -> 'a (* fold_right f s acc *)
-  val filter : (elt -> bool) -> t -> t (* filter p s *)
-  val map : (elt -> elt) -> t -> t (* map f s *)
+val equal_set :
+  'a open_addressing_set list -> 'a open_addressing_set list -> bool
+(** [equal_set set set] сравнить два набора [set] и [set] *)
 
-  val union : t -> t -> t (* union s1 s2 *)
-  (** Monoid over union *)
+type 'a monoid_set = {
+  empty : 'a open_addressing_set list;  (** нейтральный элемент = пустой сет *)
+  op :
+    'a open_addressing_set list ->
+    'a open_addressing_set list ->
+    'a open_addressing_set list;
+      (** оператор = объединение сета *)
+}
+(** представитель моноида Open Addressing Set. *)
 
-  val equal_set : t -> t -> bool (* equal_set s1 s2 *)
-  val subset : t -> t -> bool (* subset s1 s2 *)
+(** функции по свойству моноида *)
 
-  val to_list : t -> elt list (* convert set to list *)
-  (** Utilities (for tests / debug) *)
+val monoid_set_op :
+  'a open_addressing_set list ->
+  'a open_addressing_set list ->
+  'a open_addressing_set list
+(** [monoid_set_op set1 set2] объединить два набора [set1] и [set2] в
+    соответствии с бинарной операцией моноида. *)
 
-  val of_list : elt list -> t (* convert list to set *)
-end
+val monoid_set_empty : int -> 'a open_addressing_set list
+(** [monoid_set_empty size] создать пустой набор с размером [size], используемый
+    в качестве единичного элемента в моноиде. *)
 
-module Make (H : HASHABLE) : SET with type elt = H.t
+(** допольнительные функции *)
+
+val filter :
+  'a open_addressing_set list -> ('a -> bool) -> 'a open_addressing_set list
+(** [filter set f] фильтрует элементы в наборе на основе функции условия [f]. *)
+
+val map :
+  'a open_addressing_set list -> ('a -> 'b) -> 'b open_addressing_set list
+(** [map set f] применять функцию [f] к каждому элементу в наборе и верните
+    новый набор. *)
+
+val fold_left : 'a open_addressing_set list -> ('b -> 'a -> 'b) -> 'b -> 'b
+(** [fold_left set f init] сложить элементы в наборе слева направо, начиная со
+    значения [init]. *)
+
+val fold_right : 'a open_addressing_set list -> ('a -> 'b -> 'b) -> 'b -> 'b
+(** [fold_right set f init] сложить элементы в наборе справа налево, начиная со
+    значения [init]. *)
