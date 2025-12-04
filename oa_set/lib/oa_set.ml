@@ -78,13 +78,14 @@ let monoid_set_op (set1 : 'a open_addressing_set list)
 let monoid_set_empty (size : int) : 'a open_addressing_set list =
   create_set size
 
+(* тип моноида *)
 type 'a monoid_set = {
-  empty : 'a open_addressing_set list;  (** Set rỗng (phần tử đơn vị) *)
+  empty : 'a open_addressing_set list; (* нейтральный элемент *)
   op :
     'a open_addressing_set list ->
     'a open_addressing_set list ->
     'a open_addressing_set list;
-      (** Phép toán hợp nhất (union) *)
+      (** оператор (union) *)
 }
 
 (* фильтрация *)
