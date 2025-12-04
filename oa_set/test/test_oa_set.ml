@@ -1,81 +1,169 @@
+open Alcotest
+open QCheck
 open Oa_set
 
-(* ===== Hashable int & Set int ===== *)
+(* Unit Testing with Alcotest             *)
 
-module HInt = struct
-  type t = int
+(* Тест insert *)
+let test_insert () =
+  let set = create_set 10 in
+  let set = insert set 5 in
+  let set = insert set 10 in
+  (* Проверьте элемент в наборе *)
+  let test_5 = contains set 5 in
+  let test_10 = contains set 10 in
+  let test_15 = contains set 15 in
+  check Alcotest.bool "Test insert 5" true test_5;
+  check Alcotest.bool "Test insert 10" true test_10;
+  check Alcotest.bool "Test insert 15" false test_15
 
-  let hash x = x
-  let equal = Int.equal
-end
+(* Тест remove *)
+let test_remove () =
+  let set = create_set 10 in
+  let set = insert set 5 in
+  let set = remove set 5 in
+  (* Убедитесь, что элемент 5 был удален из набора *)
+  let test_5 = contains set 5 in
+  check Alcotest.bool "Test remove" false test_5
 
-module SInt = Make (HInt)
+(* Тест monoid (оператор - объединение множеств) *)
+let test_monoid_op () =
+  let set1 = insert (create_set 10) 5 in
+  let set2 = insert (create_set 10) 10 in
+  let set3 = insert (create_set 10) 15 in
+  let merged_set = monoid_set_op set1 set2 in
+  let merged_set = monoid_set_op merged_set set3 in
+  check Alcotest.bool "Test monoid op 5" true (contains merged_set 5);
+  check Alcotest.bool "Test monoid op 10" true (contains merged_set 10);
+  check Alcotest.bool "Test monoid op 15" true (contains merged_set 15)
 
-let to_set xs = List.fold_left (fun acc x -> SInt.add x acc) SInt.empty xs
+(* Тест monoid (нейтральный элемент - пустое множество) *)
+let test_monoid_empty () =
+  let set1 = insert (create_set 10) 5 in
+  let empty_set = monoid_set_empty 10 in
+  let result_set = monoid_set_op set1 empty_set in
+  check Alcotest.bool "Test monoid empty" true (contains result_set 5)
 
-(* ===== Unit tests (Alcotest) ===== *)
+(* Тест фильтрации *)
+let test_filter () =
+  let set = create_set 10 in
+  let set = insert set 5 in
+  let set = insert set 10 in
+  let set = insert set 15 in
+  let filter_set = filter set (fun x -> x mod 2 = 0) in
+  (* Убедитесь, что набор после фильтрации содержит только четные элементы *)
+  check Alcotest.bool "Test filter 5" false (contains filter_set 5);
+  check Alcotest.bool "Test filter 10" true (contains filter_set 10);
+  check Alcotest.bool "Test filter 15" false (contains filter_set 15)
 
-let test_basic () =
-  let s = to_set [ 1; 2; 2; 3 ] in
-  Alcotest.(check int) "card=3" 3 (SInt.cardinal s);
-  Alcotest.(check bool) "mem 2" true (SInt.mem 2 s);
-  Alcotest.(check bool) "mem 4" false (SInt.mem 4 s);
-  let s' = SInt.remove 2 s in
-  Alcotest.(check bool) "mem 2 removed" false (SInt.mem 2 s');
-  Alcotest.(check int) "card=2" 2 (SInt.cardinal s')
+(* Тест map *)
+let test_map () =
+  let set = create_set 10 in
+  let set = insert set 5 in
+  let set = insert set 10 in
+  let map_set = map set (fun x -> x * 2) in
+  (* Убедитесь, что в новом наборе есть элементы, которые были продублированы *)
+  check Alcotest.bool "Test map 5" true (contains map_set 10);
+  check Alcotest.bool "Test map 10" true (contains map_set 20);
+  check Alcotest.bool "Test map 15" false (contains map_set 15)
 
-let test_union_equal () =
-  let a = to_set [ 1; 2; 3 ] in
-  let b = to_set [ 3; 4 ] in
-  let u1 = SInt.union (SInt.union a b) (to_set [ 5 ]) in
-  let u2 = SInt.union a (SInt.union b (to_set [ 5 ])) in
-  Alcotest.(check bool) "assoc" true (SInt.equal_set u1 u2);
-  Alcotest.(check bool)
-    "identity" true
-    (SInt.equal_set (SInt.union SInt.empty a) a)
+(* Тест fold *)
+let test_fold_left () =
+  let set = create_set 10 in
+  let set = insert set 1 in
+  let set = insert set 2 in
+  let set = insert set 3 in
+  let sum = fold_left set (fun acc x -> acc + x) 0 in
+  (* Убедитесь, что fold_left вычисляет правильную сумму *)
+  check Alcotest.int "Test fold_left" 6 sum
 
-(* ===== Property tests (QCheck + Alcotest wrapper) ===== *)
+let test_fold_right () =
+  let set = create_set 10 in
+  let set = insert set 1 in
+  let set = insert set 2 in
+  let set = insert set 3 in
+  let sum = fold_right set (fun x acc -> acc + x) 0 in
+  (* Убедитесь, что fold_right вычисляет правильную сумму *)
+  check Alcotest.int "Test fold_right" 6 sum
 
-open QCheck
+(* Property-based Testing with QCheck *)
 
-let gen_int_list = small_list small_int
+(* Random generator 'a open_addressing_set *)
+let open_addressing_set_elem_gen =
+  let open Gen in
+  frequency
+    [
+      (1, return Empty); (2, map (fun x -> Occupied x) int); (1, return Deleted);
+    ]
 
-let prop_monoid_identity =
-  Test.make ~count:300 ~name:"monoid_identity" gen_int_list (fun xs ->
-      let s = to_set xs in
-      SInt.equal_set (SInt.union SInt.empty s) s)
+(* QCheck.make needs arbitrary *)
+let open_addressing_set_arbitrary = QCheck.make open_addressing_set_elem_gen
 
-let prop_monoid_assoc =
-  Test.make ~count:300 ~name:"monoid_assoc"
-    (triple gen_int_list gen_int_list gen_int_list) (fun (xs, ys, zs) ->
-      let a, b, c = (to_set xs, to_set ys, to_set zs) in
-      let lhs = SInt.union (SInt.union a b) c in
-      let rhs = SInt.union a (SInt.union b c) in
-      SInt.equal_set lhs rhs)
+(* Property: Объединение с нейтральным элементом не изменяет исходный набор *)
+let monoid_empty_property =
+  let gen = open_addressing_set_arbitrary in
+  let prop el =
+    let empty_set = monoid_set_empty 10 in
+    let result_set = monoid_set_op [ el ] empty_set in
+    match el with Occupied v -> contains result_set v | _ -> true
+  in
+  QCheck.Test.make ~name:"Monoid empty set" gen prop
 
-let prop_add_idempotent =
-  Test.make ~count:300 ~name:"add_idempotent" (pair gen_int_list small_int)
-    (fun (xs, x) ->
-      let s1 = SInt.add x (to_set xs) in
-      let s2 = SInt.add x s1 in
-      SInt.equal_set s1 s2)
+(* Property: Ассоциативность: (A ∪ B) ∪ C = A ∪ (B ∪ C) *)
+let monoid_associative_property =
+  let gen = open_addressing_set_arbitrary in
+  let prop el =
+    let set1 = insert (create_set 10) el in
+    let set2 = insert (create_set 10) el in
+    let set3 = insert (create_set 10) el in
+    let result1 = monoid_set_op (monoid_set_op set1 set2) set3 in
+    let result2 = monoid_set_op set1 (monoid_set_op set2 set3) in
+    result1 = result2
+  in
+  QCheck.Test.make ~name:"Monoid associative" gen prop
 
-(* helper: run 1 property likes 1 test-case Alcotest *)
+(* Property: idempotent
+После добавления дублированного элемента el убедитесь, что значения set1 и set2 равны *)
+let add_idempotent_property =
+  let gen = open_addressing_set_arbitrary in
+  let prop el =
+    let set1 = insert (create_set 10) el in
+    let set2 = insert set1 el in
+    equal_set set1 set2
+  in
+  QCheck.Test.make ~name:"add_idempotent" gen prop
+
 let check_prop (t : QCheck.Test.t) () = QCheck.Test.check_exn t
 
+(* Запускать тесты *)
 let () =
   let open Alcotest in
-  run "oa_set"
+  run "Open Addressing Set Tests"
     [
-      ( "unit",
+      (* Unit Tests *)
+      ("Insert", [ test_case "Insert element" `Quick test_insert ]);
+      ("Remove", [ test_case "Remove element" `Quick test_remove ]);
+      ("Monoid", [ test_case "Monoid operation" `Quick test_monoid_op ]);
+      ("Monoid empty", [ test_case "Monoid empty set" `Quick test_monoid_empty ]);
+      (* Additional Unit Tests *)
+      ("Filter", [ test_case "Filter elements" `Quick test_filter ]);
+      ("Map", [ test_case "Map elements" `Quick test_map ]);
+      ("Fold Left", [ test_case "Fold Left" `Quick test_fold_left ]);
+      ("Fold Right", [ test_case "Fold Right" `Quick test_fold_right ]);
+      (* Property Tests *)
+      ( "Monoid empty prop",
         [
-          test_case "basic" `Quick test_basic;
-          test_case "union_equal" `Quick test_union_equal;
+          test_case "Monoid empty property" `Quick
+            (check_prop monoid_empty_property);
         ] );
-      ( "props",
+      ( "Monoid associative prop",
         [
-          test_case "monoid_identity" `Quick (check_prop prop_monoid_identity);
-          test_case "monoid_assoc" `Quick (check_prop prop_monoid_assoc);
-          test_case "add_idempotent" `Quick (check_prop prop_add_idempotent);
+          test_case "Monoid associative property" `Quick
+            (check_prop monoid_associative_property);
+        ] );
+      ( "Add idempotent",
+        [
+          test_case "Add idempotent property" `Quick
+            (check_prop add_idempotent_property);
         ] );
     ]
